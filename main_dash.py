@@ -95,7 +95,7 @@ app.layout = html.Div(style={'backgroundColor': colors['background']}, children=
     dcc.DatePickerRange(
         id="date-picker-in_out",
         start_date=datetime.datetime(2018, 5, 22),
-        end_date=datetime.datetime(2018, 8, 13),
+        end_date=datetime.date.today(),
         min_date_allowed=datetime.datetime(2018, 5, 22),
         max_date_allowed=datetime.datetime.now(),
         end_date_placeholder_text="Select a date"
@@ -106,7 +106,7 @@ app.layout = html.Div(style={'backgroundColor': colors['background']}, children=
     dcc.DatePickerRange(
         id="date-picker-range",
         start_date=datetime.datetime(2018, 5, 22),
-        end_date=datetime.datetime(2018, 8, 13),
+        end_date=datetime.date.today(),
         min_date_allowed=datetime.datetime(2018, 5, 22),
         max_date_allowed=datetime.datetime.now(),
         end_date_placeholder_text="Select a date"
@@ -121,16 +121,22 @@ app.layout = html.Div(style={'backgroundColor': colors['background']}, children=
         id='table')
 ])
 
+
+
 @app.callback(
     Output("table", "rows"),
     [Input("date-picker-range", "start_date"),
     Input("date-picker-range", "end_date")]
 )
 def update_table(start_date, end_date):
-    return{
-        "columns": [{"name": i, "id": i} for i in transactions.columns],
-        "data": transactions.to_dict("rows"),
-    }
+    start_date = datetime.datetime.strptime(start_date, '%Y-%m-%d').date()
+    end_date = datetime.datetime.strptime(end_date, '%Y-%m-%d').date()
+
+    transactions_filtered = transactions[(transactions['date'] > start_date) & (transactions['date'] < end_date)]
+
+    return transactions_filtered.to_dict('records')
+
+
 
 @app.callback(
     Output("in-out-graph", "figure"),
@@ -138,7 +144,6 @@ def update_table(start_date, end_date):
     Input("date-picker-in_out", "end_date")]
 )
 def update_graph(start_date, end_date):
-
     start_date = datetime.datetime.strptime(start_date, '%Y-%m-%d').date()
     end_date = datetime.datetime.strptime(end_date, '%Y-%m-%d').date()
 
@@ -168,7 +173,6 @@ def update_graph(start_date, end_date):
             barmode='relative',
         )
     }
-
 
 
 if __name__ == '__main__':
