@@ -86,7 +86,6 @@ app.layout = html.Div(style={'backgroundColor': colors['background']}, children=
 
     html.Div([
         html.Div([
-            html.H3('Asset allocation'),
             dcc.Graph(
                 id='Graph1',
                 figure={
@@ -97,6 +96,7 @@ app.layout = html.Div(style={'backgroundColor': colors['background']}, children=
                         {'x': ['Assets'], 'y': [depot_balance.amount[0]], 'type': 'bar', 'name': u'Depot'}
                     ],
                     'layout': {
+                        'title': 'Asset allocation',
                         'plot_bgcolor': colors['background'],
                         'paper_bgcolor': colors['background'],
                         'font': {
@@ -108,7 +108,6 @@ app.layout = html.Div(style={'backgroundColor': colors['background']}, children=
         ], style={'width': '49%', 'display': 'inline-block'}),
 
         html.Div([
-            html.H3('Stock overview'),
             dcc.Graph(id='stock_overview',
                       figure=go.Figure(
                           data=[go.Pie(labels=list(stocks.name),
