@@ -34,6 +34,8 @@ depot_balance = database.read_from_db('''
 select sum(value) as amount from depot_data
 ''')
 
+balance_all = float(sparkasse_balance.amount[0])+float(dkb_balance.amount[0])+float(cc_balance.amount[0])+float(depot_balance.amount[0])
+
 in_out = database.read_from_db('''
 select * from (
 select date_trunc('month',date(date)),tag, sum(amount) as amount from sparkasse_transactions where tag != 'Internal transaction' group by 1,2
@@ -53,7 +55,13 @@ select amount, description as applicant_name, date(voucher_date), 'NA' as postin
 order by date desc
 ''')
 
+stocks = database.read_from_db('''
+select value, name from depot_data
+''')
+
 in_out.date_trunc = in_out.date_trunc.apply(lambda x: x.date())
+
+
 
 app = dash.Dash()
 colors = {
@@ -68,29 +76,48 @@ app.layout = html.Div(style={'backgroundColor': colors['background']}, children=
             'color': colors['text']
         }
     ),
-    html.Div(children='Dash: A web application framework for Python.', style={
-        'textAlign': 'center',
-        'color': colors['text']
-    }),
-    dcc.Graph(
-        id='Graph1',
-        figure={
-            'data': [
-                {'x': ['Assets'], 'y': [sparkasse_balance.amount[0]], 'type': 'bar', 'name': 'Sparkasse'},
-                {'x': ['Assets'], 'y': [dkb_balance.amount[0]], 'type': 'bar', 'name': u'DKB'},
-                {'x': ['Assets'], 'y': [cc_balance.amount[0]], 'type': 'bar', 'name': u'CC'},
-                {'x': ['Assets'], 'y': [depot_balance.amount[0]], 'type': 'bar', 'name': u'Depot'}
-            ],
-            'layout': {
-                'plot_bgcolor': colors['background'],
-                'paper_bgcolor': colors['background'],
-                'font': {
-                    'color': colors['text']
-                }
-            }
+    html.H1(
+        children='Total balance: '+str(round(balance_all)) + ' Euro',
+        style={
+            'textAlign': 'left',
+            'color': colors['text']
         }
     ),
 
+    html.Div([
+        html.Div([
+            html.H3('Asset allocation'),
+            dcc.Graph(
+                id='Graph1',
+                figure={
+                    'data': [
+                        {'x': ['Assets'], 'y': [sparkasse_balance.amount[0]], 'type': 'bar', 'name': 'Sparkasse'},
+                        {'x': ['Assets'], 'y': [dkb_balance.amount[0]], 'type': 'bar', 'name': u'DKB'},
+                        {'x': ['Assets'], 'y': [cc_balance.amount[0]], 'type': 'bar', 'name': u'CC'},
+                        {'x': ['Assets'], 'y': [depot_balance.amount[0]], 'type': 'bar', 'name': u'Depot'}
+                    ],
+                    'layout': {
+                        'plot_bgcolor': colors['background'],
+                        'paper_bgcolor': colors['background'],
+                        'font': {
+                            'color': colors['text']
+                        }
+                    }
+                }
+            )
+        ], style={'width': '49%', 'display': 'inline-block'}),
+
+        html.Div([
+            html.H3('Stock overview'),
+            dcc.Graph(id='stock_overview',
+                      figure=go.Figure(
+                          data=[go.Pie(labels=list(stocks.name),
+                                       values=list(stocks.value))],
+                          layout=go.Layout(
+                              title='Stock overview')
+                      ))
+        ], style={'width': '49%', 'display': 'inline-block'}),
+    ]),
 
     dcc.DatePickerRange(
         id="date-picker-in_out",
@@ -118,8 +145,10 @@ app.layout = html.Div(style={'backgroundColor': colors['background']}, children=
         filterable=True,
         sortable=True,
         selected_row_indices=[],
-        id='table')
+        id='table'),
+
 ])
+
 
 
 
