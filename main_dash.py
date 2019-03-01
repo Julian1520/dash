@@ -4,11 +4,15 @@ import dash_html_components as html
 import dash_table_experiments
 import dash_table
 import os
+import random
 import datetime
 from postgres_utils import BankingDatabase
 import plotly.graph_objs as go
 from dash.dependencies import Input, Output
+import dash_auth
+from user_credentials import VALID_USERNAME_PASSWORD_PAIRS
 
+rand_mult = random.randint(0,1)
 
 database = BankingDatabase(database_name=os.environ.get('DATABASE_BANKING'),
                            user=os.environ.get('DATABASE_BANKING_USER'),
@@ -81,6 +85,11 @@ in_out.date_trunc = in_out.date_trunc.apply(lambda x: x.date())
 app = dash.Dash(__name__)
 
 server = app.server
+
+auth = dash_auth.BasicAuth(
+    app,
+    VALID_USERNAME_PASSWORD_PAIRS
+)
 
 colors = {
     'background': 'rgba(0,0,0,0)',
