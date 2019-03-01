@@ -2,12 +2,13 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 import dash_table_experiments
+import dash_table
 import os
-import random
 import datetime
 from postgres_utils import BankingDatabase
 import plotly.graph_objs as go
 from dash.dependencies import Input, Output
+
 
 database = BankingDatabase(database_name=os.environ.get('DATABASE_BANKING'),
                            user=os.environ.get('DATABASE_BANKING_USER'),
@@ -59,16 +60,33 @@ stocks = database.read_from_db('''
 select value, name from depot_data
 ''')
 
+overview = database.read_from_db('''
+select 'Stocks' as "Asset", sum(value) as "Value"
+from depot_data
+union all
+select 'Cash' as "Asset",
+       ROUND((select amount from sparkasse_balance order by date(date) desc limit 1) +
+             (select amount from dkb_balance order by date(date) desc limit 1) +
+             (select amount from credit_card_balance order by date(date) desc limit 1)) as "Cash value"
+union all
+select '' as "Asset",
+       ROUND((select amount from sparkasse_balance order by date(date) desc limit 1) +
+             (select amount from dkb_balance order by date(date) desc limit 1) +
+             (select amount from credit_card_balance order by date(date) desc limit 1))+
+             (select sum(value) as "Value" from depot_data)
+''')
+
 in_out.date_trunc = in_out.date_trunc.apply(lambda x: x.date())
-
-
 
 app = dash.Dash()
 colors = {
     'background': 'rgba(0,0,0,0)',
-    'text': 'rgba(1,1,1,1)'
+    'text': 'rgba(1,1,1,1)',
+    'in_out_color': ['rgb(255,0,0)', 'rgb(0,255,0)', 'rgb(0,0,255)', 'rgb(255,255,0)', 'rgb(0,255,255)',
+                     'rgb(255,0,125)', 'rgb(0,255,125)', 'rgb(125,125,125)']
 }
 app.layout = html.Div(style={'backgroundColor': colors['background']}, children=[
+
     html.H1(
         children='Finance Overview',
         style={
@@ -76,12 +94,20 @@ app.layout = html.Div(style={'backgroundColor': colors['background']}, children=
             'color': colors['text']
         }
     ),
-    html.H1(
-        children='Total balance: '+str(round(balance_all)) + ' Euro',
-        style={
-            'textAlign': 'left',
-            'color': colors['text']
-        }
+
+    dash_table.DataTable(
+        id='stock_table',
+        columns=[{"name": i, "id": i} for i in overview.columns],
+        data=overview.to_dict('rows'),
+        style_table={
+        'maxWidth': '500px',
+        'overflowY': 'scroll',
+        'border': 'thin lightgrey solid'
+        },
+        style_data_conditional=[{
+        "if": {"row_index": 2},
+        "fontWeight": "bold"
+        }]
     ),
 
     html.Div([
@@ -149,8 +175,6 @@ app.layout = html.Div(style={'backgroundColor': colors['background']}, children=
 ])
 
 
-
-
 @app.callback(
     Output("table", "rows"),
     [Input("date-picker-range", "start_date"),
@@ -165,7 +189,6 @@ def update_table(start_date, end_date):
     return transactions_filtered.to_dict('records')
 
 
-
 @app.callback(
     Output("in-out-graph", "figure"),
     [Input("date-picker-in_out", "start_date"),
@@ -178,7 +201,7 @@ def update_graph(start_date, end_date):
     filtered_df = in_out[(in_out['date_trunc'] > start_date) & (in_out['date_trunc'] < end_date)]
 
     data = list()
-
+    count = 0
     in_out_dict = (filtered_df.groupby('tag').apply(lambda x: (list(x['amount']), list(x['date_trunc']))).to_dict())
 
     for key, value in in_out_dict.items():
@@ -187,10 +210,10 @@ def update_graph(start_date, end_date):
             y=value[0],
             name=key,
             marker=go.bar.Marker(
-                color='rgb(' + str(random.randint(0, 255)) + ',' + str(random.randint(0, 255)) + ',' + str(
-                    random.randint(0, 255)) + ')'
+                color=colors['in_out_color'][count]
             )
         ))
+        count = count + 1
 
     return {
         "data": data,
