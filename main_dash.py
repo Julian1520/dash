@@ -52,7 +52,7 @@ select amount, applicant_name, date(date), posting_text, purpose, bank_name,tag 
 union all
 select amount, applicant_name, date(date), posting_text, purpose, bank_name,tag from sparkasse_transactions
 union all
-select amount, description as applicant_name, date(voucher_date), 'NA' as posting_text, 'NA' as purpose, 'NA' as bank_name, tag  from credit_card_data
+select amount, description as applicant_name, to_date(voucher_date, 'dd.mm.yy'), 'NA' as posting_text, 'NA' as purpose, 'NA' as bank_name, tag  from credit_card_data
 order by date desc
 ''')
 
