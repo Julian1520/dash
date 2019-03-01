@@ -43,7 +43,7 @@ select date_trunc('month',date(date)),tag, sum(amount) as amount from sparkasse_
 union all
 select date_trunc('month',date(date)),tag, sum(amount) as amount from dkb_transactions where tag != 'Internal transaction' group by 1,2
 union all
-select date_trunc('month',date(value_date)),tag, sum(amount) as amount from credit_card_data where tag != 'Internal transaction' group by 1,2)a
+select date_trunc('month',to_date(value_date, 'dd.mm.yy')),tag, sum(amount) as amount from credit_card_data where tag != 'Internal transaction' group by 1,2)a
 -- where date_trunc between date('2018-07-01') AND date('{}')
 ''')
 
