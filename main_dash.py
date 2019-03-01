@@ -78,7 +78,10 @@ select '' as "Asset",
 
 in_out.date_trunc = in_out.date_trunc.apply(lambda x: x.date())
 
-app = dash.Dash()
+app = dash.Dash(__name__)
+
+server = app.server
+
 colors = {
     'background': 'rgba(0,0,0,0)',
     'text': 'rgba(1,1,1,1)',
@@ -227,4 +230,4 @@ def update_graph(start_date, end_date):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    app.run_server(debug=True, host='0.0.0.0')
