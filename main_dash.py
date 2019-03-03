@@ -6,13 +6,29 @@ import dash_table
 import os
 import random
 import datetime
-from postgres_utils import BankingDatabase
 import plotly.graph_objs as go
-from dash.dependencies import Input, Output
 import dash_auth
+import argparse
+import pandas as pd
+from postgres_utils import BankingDatabase
+from dash.dependencies import Input, Output
 from user_credentials import VALID_USERNAME_PASSWORD_PAIRS
+from faker import Faker
+from sql_queries import *
+from dash_utils_visuals import *
+from dash_utils_callback_functions import *
 
-rand_mult = random.randint(0,1)
+parser = argparse.ArgumentParser()
+parser.add_argument("--test", type=str, help='yes to run on demo mode')
+parsed_args = parser.parse_args()
+
+fake = Faker()
+
+if parsed_args.test == 'yes':
+    obscure_int = random.uniform(3, 9)
+    obscure_text = 'dummy'
+else:
+    obscure_int = 1
 
 database = BankingDatabase(database_name=os.environ.get('DATABASE_BANKING'),
                            user=os.environ.get('DATABASE_BANKING_USER'),
@@ -20,65 +36,23 @@ database = BankingDatabase(database_name=os.environ.get('DATABASE_BANKING'),
                            host=os.environ.get('DATABASE_BANKING_HOST'),
                            port=os.environ.get('DATABASE_BANKING_PORT'))
 
-sparkasse_balance = database.read_from_db('''
-select amount from sparkasse_balance where date(date) =
-                                             (select max(date(date)) from sparkasse_balance)
-''')
+sparkasse_balance = database.read_from_db(sparkasse_balance_query.format(obscure_int))
+dkb_balance = database.read_from_db(dkb_balance_query.format(obscure_int))
+cc_balance = database.read_from_db(cc_balance_query.format(obscure_int))
+depot_balance = database.read_from_db(depot_balance_query.format(obscure_int))
+in_out = database.read_from_db(in_out_query.format(obscure_int, obscure_int, obscure_int))
+transactions = database.read_from_db(transactions_query)
+stocks = database.read_from_db(stocks_query.format(obscure_int))
+overview = database.read_from_db(overview_query.format(obscure_int=obscure_int))
+balance_chart = database.read_from_db(balance_chart_query)
 
-dkb_balance = database.read_from_db('''
-select amount from dkb_balance where date(date) =
-                                             (select max(date(date)) from dkb_balance)
-''')
+balance_all = float(sparkasse_balance.amount[0]) + float(dkb_balance.amount[0]) + float(cc_balance.amount[0]) + float(
+    depot_balance.amount[0])
 
-cc_balance = database.read_from_db('''
-select amount from credit_card_balance where date(date) =
-                                             (select max(date(date)) from credit_card_balance)
-''')
-
-depot_balance = database.read_from_db('''
-select sum(value) as amount from depot_data
-''')
-
-balance_all = float(sparkasse_balance.amount[0])+float(dkb_balance.amount[0])+float(cc_balance.amount[0])+float(depot_balance.amount[0])
-
-in_out = database.read_from_db('''
-select * from (
-select date_trunc('month',date(date)),tag, sum(amount) as amount from sparkasse_transactions where tag != 'Internal transaction' group by 1,2
-union all
-select date_trunc('month',date(date)),tag, sum(amount) as amount from dkb_transactions where tag != 'Internal transaction' group by 1,2
-union all
-select date_trunc('month',to_date(value_date, 'dd.mm.yy')),tag, sum(amount) as amount from credit_card_data where tag != 'Internal transaction' group by 1,2)a
--- where date_trunc between date('2018-07-01') AND date('{}')
-''')
-
-transactions = database.read_from_db('''
-select amount, applicant_name, date(date), posting_text, purpose, bank_name,tag from dkb_transactions
-union all
-select amount, applicant_name, date(date), posting_text, purpose, bank_name,tag from sparkasse_transactions
-union all
-select amount, description as applicant_name, to_date(voucher_date, 'dd.mm.yy'), 'NA' as posting_text, 'NA' as purpose, 'NA' as bank_name, tag  from credit_card_data
-order by date desc
-''')
-
-stocks = database.read_from_db('''
-select value, name from depot_data
-''')
-
-overview = database.read_from_db('''
-select 'Stocks' as "Asset", sum(value) as "Value"
-from depot_data
-union all
-select 'Cash' as "Asset",
-       ROUND((select amount from sparkasse_balance order by date(date) desc limit 1) +
-             (select amount from dkb_balance order by date(date) desc limit 1) +
-             (select amount from credit_card_balance order by date(date) desc limit 1)) as "Cash value"
-union all
-select '' as "Asset",
-       ROUND((select amount from sparkasse_balance order by date(date) desc limit 1) +
-             (select amount from dkb_balance order by date(date) desc limit 1) +
-             (select amount from credit_card_balance order by date(date) desc limit 1))+
-             (select sum(value) as "Value" from depot_data)
-''')
+if parsed_args.test == 'yes':
+    transactions['amount'] = [fake.random_number(3) for i in range(transactions.amount.size)]
+    transactions['applicant_name'] = [fake.first_name() for i in range(transactions.applicant_name.size)]
+    transactions['purpose'] = [fake.catch_phrase() for i in range(transactions.purpose.size)]
 
 in_out.date_trunc = in_out.date_trunc.apply(lambda x: x.date())
 
@@ -97,114 +71,125 @@ colors = {
     'in_out_color': ['rgb(255,0,0)', 'rgb(0,255,0)', 'rgb(0,0,255)', 'rgb(255,255,0)', 'rgb(0,255,255)',
                      'rgb(255,0,125)', 'rgb(0,255,125)', 'rgb(125,125,125)']
 }
-app.layout = html.Div(style={'backgroundColor': colors['background']}, children=[
 
-    html.H1(
-        children='Finance Overview',
-        style={
-            'textAlign': 'center',
-            'color': colors['text']
-        }
-    ),
+app.config['suppress_callback_exceptions'] = True
+app.layout = html.Div(className="app-header",
+                      style={'backgroundColor': colors['background']},
+                      children=[
 
-    dash_table.DataTable(
-        id='stock_table',
-        columns=[{"name": i, "id": i} for i in overview.columns],
-        data=overview.to_dict('rows'),
-        style_table={
-        'maxWidth': '500px',
-        'overflowY': 'scroll',
-        'border': 'thin lightgrey solid'
-        },
-        style_data_conditional=[{
-        "if": {"row_index": 2},
-        "fontWeight": "bold"
-        }]
-    ),
+                          html.Div([
+                              html.Header('Financial Overview',
+                                          style={'display': 'inline',
+                                                 # 'float': 'left',
+                                                 'font-size': '2.65em',
+                                                 'margin-left': '90px',
+                                                 'margin-top': '30px',
+                                                 'font-weight': 'bolder',
+                                                 'font-family': 'Sans-Serif',
+                                                 'color': "rgba(117, 117, 117, 0.95)"
+                                                 }),
+                              html.Img(
+                                  src="https://s3-us-west-1.amazonaws.com/plotly-tutorials/logo/new-branding/dash-logo-by-plotly-stripe.png",
+                                  style={
+                                      'height': '53px',
+                                      'float': 'right'
+                                  },
+                              ),
+                          ]),
 
-    html.Div([
-        html.Div([
-            dcc.Graph(
-                id='Graph1',
-                figure={
-                    'data': [
-                        {'x': ['Assets'], 'y': [sparkasse_balance.amount[0]], 'type': 'bar', 'name': 'Sparkasse'},
-                        {'x': ['Assets'], 'y': [dkb_balance.amount[0]], 'type': 'bar', 'name': u'DKB'},
-                        {'x': ['Assets'], 'y': [cc_balance.amount[0]], 'type': 'bar', 'name': u'CC'},
-                        {'x': ['Assets'], 'y': [depot_balance.amount[0]], 'type': 'bar', 'name': u'Depot'}
-                    ],
-                    'layout': {
-                        'title': 'Asset allocation',
-                        'plot_bgcolor': colors['background'],
-                        'paper_bgcolor': colors['background'],
-                        'font': {
-                            'color': colors['text']
-                        }
-                    }
-                }
-            )
-        ], style={'width': '49%', 'display': 'inline-block'}),
+                          html.Div([
+                              html.Div([
+                                  dash_table.DataTable(
+                                      id='stock_table',
+                                      columns=[{"name": i, "id": i} for i in overview.columns],
+                                      data=overview.to_dict('rows'),
+                                      style_table={
+                                          'maxWidth': '500px',
+                                          'overflowY': 'scroll',
+                                          'margin-top': '20px'
+                                      },
+                                      style_data_conditional=[{
+                                          "if": {"row_index": 2},
+                                          "fontWeight": "bold"
+                                      }]
+                                  ),
+                              ], style={'width': '42%', 'display': 'inline-block'}),
 
-        html.Div([
-            dcc.Graph(id='stock_overview',
-                      figure=go.Figure(
-                          data=[go.Pie(labels=list(stocks.name),
-                                       values=list(stocks.value))],
-                          layout=go.Layout(
-                              title='Stock overview')
-                      ))
-        ], style={'width': '49%', 'display': 'inline-block'}),
-    ]),
+                              html.Div([
+                                  html.H1('Balance over time'),
+                                  return_dropdown('my-dropdown', balance_chart['Cash location'].unique()),
+                                  dcc.Graph(id='my-graph')
+                              ], style={'width': '49%', 'display': 'inline-block'}),
+                          ]),
 
-    dcc.DatePickerRange(
-        id="date-picker-in_out",
-        start_date=datetime.datetime(2018, 5, 22),
-        end_date=datetime.date.today(),
-        min_date_allowed=datetime.datetime(2018, 5, 22),
-        max_date_allowed=datetime.datetime.now(),
-        end_date_placeholder_text="Select a date"
-    ),
+                          html.Div([
+                              html.Div([
+                                  dcc.Graph(
+                                      id='Graph1',
+                                      figure={
+                                          'data': [
+                                              {'x': ['Assets'], 'y': [sparkasse_balance.amount[0]], 'type': 'bar',
+                                               'name': 'Sparkasse'},
+                                              {'x': ['Assets'], 'y': [dkb_balance.amount[0]], 'type': 'bar',
+                                               'name': u'DKB'},
+                                              {'x': ['Assets'], 'y': [cc_balance.amount[0]], 'type': 'bar',
+                                               'name': u'CC'},
+                                              {'x': ['Assets'], 'y': [depot_balance.amount[0]], 'type': 'bar',
+                                               'name': u'Depot'}
+                                          ],
+                                          'layout': {
+                                              'title': 'Asset allocation',
+                                              'plot_bgcolor': colors['background'],
+                                              'paper_bgcolor': colors['background'],
+                                              'font': {
+                                                  'color': colors['text']
+                                              }
+                                          }
+                                      }
+                                  )
+                              ], style={'width': '49%', 'display': 'inline-block'}),
 
-    dcc.Graph(id="in-out-graph"),
+                              html.Div([
+                                  dcc.Graph(id='stock_overview',
+                                            figure=go.Figure(
+                                                data=[go.Pie(labels=list(stocks.name),
+                                                             values=list(stocks.value))],
+                                                layout=go.Layout(
+                                                    title='Stock overview')
+                                            ))
+                              ], style={'width': '49%', 'display': 'inline-block'}),
+                          ]),
 
-    dcc.DatePickerRange(
-        id="date-picker-range",
-        start_date=datetime.datetime(2018, 5, 22),
-        end_date=datetime.date.today(),
-        min_date_allowed=datetime.datetime(2018, 5, 22),
-        max_date_allowed=datetime.datetime.now(),
-        end_date_placeholder_text="Select a date"
-    ),
+                          return_datepicker('date-picker-in_out', in_out.date_trunc),
 
-    dash_table_experiments.DataTable(
-        rows=[{}],
-        row_selectable=True,
-        filterable=True,
-        sortable=True,
-        selected_row_indices=[],
-        id='table'),
+                          dcc.Graph(id="in-out-graph"),
 
-])
+                          return_datepicker('date-picker-range', transactions.date),
 
+                          html.H1('Transactions'),
+                          dash_table_experiments.DataTable(
+                              rows=[{}],
+                              row_selectable=True,
+                              filterable=True,
+                              sortable=True,
+                              selected_row_indices=[],
+                              id='table'),
 
-@app.callback(
-    Output("table", "rows"),
-    [Input("date-picker-range", "start_date"),
-    Input("date-picker-range", "end_date")]
-)
-def update_table(start_date, end_date):
-    start_date = datetime.datetime.strptime(start_date, '%Y-%m-%d').date()
-    end_date = datetime.datetime.strptime(end_date, '%Y-%m-%d').date()
+                      ])
 
-    transactions_filtered = transactions[(transactions['date'] > start_date) & (transactions['date'] < end_date)]
+call_back_temp1 = call_back_dropdown_multiline_graph(balance_chart, 'Cash location', 'date', 'amount')
+call_back_temp1 = app.callback(Output('my-graph', 'figure'), [Input('my-dropdown', 'value')])(call_back_temp1)
 
-    return transactions_filtered.to_dict('records')
+call_back_temp2 = call_back_datepicker_tablbe(transactions, 'date')
+call_back_temp2 = app.callback(Output("table", "rows"),
+                            [Input("date-picker-range", "start_date"),
+                             Input("date-picker-range", "end_date")])(call_back_temp2)
 
 
 @app.callback(
     Output("in-out-graph", "figure"),
     [Input("date-picker-in_out", "start_date"),
-    Input("date-picker-in_out", "end_date")]
+     Input("date-picker-in_out", "end_date")]
 )
 def update_graph(start_date, end_date):
     start_date = datetime.datetime.strptime(start_date, '%Y-%m-%d').date()
