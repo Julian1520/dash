@@ -17,6 +17,19 @@ depot_balance_query = '''
 select sum(value) * {} as amount from depot_data
 '''
 
+balance_over_all_query = '''
+select distinct amount * {obscure_int} as amount, 'sparkasse' as allocation from sparkasse_balance where date(date) =
+    (select max(date(date)) from sparkasse_balance)
+union all
+select distinct amount * {obscure_int} as amount, 'dkb' as allocation from dkb_balance where date(date) =
+    (select max(date(date)) from dkb_balance)
+union all
+select sum(value) * {obscure_int} as amount, 'depot' as allocation from depot_data
+union all
+select amount * {obscure_int} as amount, 'credit card' as allocation from credit_card_balance where date(date) =
+    (select max(date(date)) from credit_card_balance)
+'''
+
 transactions_query = '''
 select amount, applicant_name, date(date), posting_text, purpose, bank_name,tag from dkb_transactions
 union all
